@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # author a.grishin                     
-# SBT_TAPE database duplication script v1.1
+# SBT_TAPE SIP database duplication script v1.1
 # ensure that backup has passed and scheduler disabled
 
 function set_parameters() {
