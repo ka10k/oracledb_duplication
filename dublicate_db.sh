@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# a.grishin                     
-# SBT_TAPE database duplication script
+# author a.grishin                     
+# SBT_TAPE database duplication script v1.1
 # ensure that backup has passed and scheduler disabled
 
 function set_parameters() {
@@ -9,23 +9,23 @@ function set_parameters() {
     PROD_SID=SIP
     PROD_PORT=1521
     PROD_SYS_PSWD=qwaszx12
-    TEST_HOST=start-tst19.mrk.vt.ru
-    TEST_SID=TSIPNN11
-    TEST_PORT=1522
+    TEST_HOST=sip-tst.mrk.vt.ru
+    TEST_SID=TSIPNN
+    TEST_PORT=1540
     TEST_SYS_PSWD=qwaszx12
     UNDO_TBS='UNDOTBS1'
-    ASM_DG=START_TST19
+    ASM_DG=SIPTST
     RECOVERY_DEST_SIZE=500G
     SGA=4G
     PGA=2G
-    ENV_DB=.envTSIPNN_11
+    ENV_DB=.envTSIPNN
     ENV_CRS=.envCRS
     DB_VER=11
-    RECOVER_UNTIL='05/03/2020 21:00:00'
+    RECOVER_UNTIL='06/04/2020 07:00:00'
     DROP_ASM_STORAGE=1
     DROP_DB_LINKS=1
     DELETE_DB_LINKS=1
-    JOBS_BROKEN=1
+    JOBS_BROKEN=0
 }
 
 function load_env() {
@@ -45,7 +45,7 @@ function create_init_file() {
         mv $init_file $init_file.old
     fi
 
-    cat <<EOF >> $ORACLE_HOME/dbs/init$1.ora
+    cat << EOF >> $ORACLE_HOME/dbs/init$1.ora
     $1.__db_cache_size=2818572288
     $1.__java_pool_size=50331648
     $1.__large_pool_size=67108864
@@ -92,6 +92,9 @@ create_sp_file() {
     echo "create spfile='+$1/$2/spfile$lower_sid.ora' from pfile;" | sqlplus -s sys/$3@$4:$5/$2 as sysdba
     local init_file=$ORACLE_HOME/dbs/init$2.ora
     echo "SPFILE='+$1/$2/spfile$lower_sid.ora'" > $init_file
+    if [ -f "$ORACLE_HOME/dbs/spfile$2.ora" ]; then
+        mv -f $ORACLE_HOME/dbs/spfile$2.ora $ORACLE_HOME/dbs/spfile$2.ora.old
+    fi
 }
 
 function create_pw_file() {
@@ -232,7 +235,7 @@ function check_connection() {
 
 function check_asm_free_space() {
     load_env $ENV_CRS
-    local asm_free_mb=$(asmcmd lsdg $1 | awk '{ print $9 }' | tail -n 1)
+    local asm_free_mb=$(asmcmd lsdg $1 | awk '{ print $8 }' | tail -n 1)
     echo $asm_free_mb
 }
 
@@ -250,21 +253,23 @@ function check_prod_dbsize() {
 
 function get_undo_name() {
     load_env $ENV_DB
-    UNDO=$(echo "show parameter undo_tablespace;" | sqlplus -s sys/$1@$2:$3/$4 as sysdba | awk '{ print $3 }' | tail -n 1)
+    UNDO=$(echo -e "SET HEADING OFF FEEDBACK OFF HEAD OFF PAGES 0;\n \
+    select VALUE from V\$PARAMETER where NAME = 'undo_tablespace';" | \
+    sqlplus -s sys/$1@$2:$3/$4 as sysdba)
     echo $UNDO
 }
 
 function get_db_block_size() {
-    local block_size=$(echo "show parameter db_block_size" | \
-    sqlplus -s sys/$1@$2:$3/$4 as sysdba | \
-    grep db_block_size | sed 's/\(^.*\s\)\([0-9]*$\)/\2/g')
+    local block_size=$(echo -e "SET HEADING OFF FEEDBACK OFF HEAD OFF PAGES 0;\n \
+    select VALUE from V\$PARAMETER where NAME = 'db_block_size';" | \
+    sqlplus -s sys/$1@$2:$3/$4 as sysdba)
     echo $block_size
 }
 
 function get_db_files() {
-    local db_files=$(echo "show parameter db_files" | \
-    sqlplus -s sys/$1@$2:$3/$4 as sysdba | \
-    grep db_files | sed 's/\(^.*\s\)\([0-9].*$\)/\2/g')
+    local db_files=$(echo -e "SET HEADING OFF FEEDBACK OFF HEAD OFF PAGES 0;\n \
+    select VALUE from V\$PARAMETER where NAME = 'db_files';" | \
+    sqlplus -s sys/$1@$2:$3/$4 as sysdba) 
     echo $db_files
 }
 
@@ -302,15 +307,15 @@ function duplicate_db() {
     allocate channel ch6 type disk;
     allocate channel ch7 type disk;
     allocate channel ch8 type disk;
-    allocate auxiliary channel ch100 type SBT_TAPE;
-    allocate auxiliary channel ch101 type SBT_TAPE;
-    allocate auxiliary channel ch102 type SBT_TAPE;
-    allocate auxiliary channel ch103 type SBT_TAPE;
-    allocate auxiliary channel ch104 type SBT_TAPE;
-    allocate auxiliary channel ch105 type SBT_TAPE;
-    allocate auxiliary channel ch106 type SBT_TAPE;
-    allocate auxiliary channel ch107 type SBT_TAPE;
-    allocate auxiliary channel ch108 type SBT_TAPE;
+    allocate auxiliary channel ch100 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
+    allocate auxiliary channel ch101 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
+    allocate auxiliary channel ch102 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
+    allocate auxiliary channel ch103 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
+    allocate auxiliary channel ch104 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
+    allocate auxiliary channel ch105 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
+    allocate auxiliary channel ch106 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
+    allocate auxiliary channel ch107 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
+    allocate auxiliary channel ch108 type SBT_TAPE PARMS="SBT_LIBRARY=/opt/omni/lib/libob2oracle8_64bit.so ENV=(OB2BARTYPE=Oracle8,OB2BARHOSTNAME=$(hostname))";
     duplicate target database to $8 nofilenamecheck;
     }
     EXIT;
@@ -477,6 +482,14 @@ function main() {
         exit 1
     fi
 
+    shutdown_db
+
+    if [[ $DROP_ASM_STORAGE -eq 1 ]]; then
+        load_env $ENV_CRS
+        drop_db $ASM_DG $TEST_SID
+    fi
+
+
     local asm_free_mb=$(check_asm_free_space $ASM_DG)
     local prod_dbsize_mb=$(check_prod_dbsize $PROD_SYS_PSWD $PROD_HOST $PROD_PORT $PROD_SID)
     local recovery_size_mb=$(($(echo $RECOVERY_DEST_SIZE | sed 's/G//')*1024))
@@ -492,14 +505,6 @@ function main() {
     fi
     
     UNDO_TBS=$(get_undo_name $PROD_SYS_PSWD $PROD_HOST $PROD_PORT $PROD_SID)
-
-    shutdown_db
-
-
-    if [[ $DROP_ASM_STORAGE -eq 1 ]]; then
-        load_env $ENV_CRS
-        drop_db $ASM_DG $TEST_SID
-    fi
 
     create_init_file $TEST_SID $ASM_DG $SGA $PGA $UNDO_TBS $db_block_size
     create_sp_file $ASM_DG $TEST_SID $TEST_SYS_PSWD $TEST_HOST $TEST_PORT
